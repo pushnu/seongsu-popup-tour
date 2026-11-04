@@ -63,7 +63,7 @@ function mapFailed(msg) {
 }
 window.gm_authFailure = () => mapFailed('구글 지도 키가 잘못됐거나 사용 제한에 걸렸어요. config.js의 키와 허용 도메인을 확인해 주세요.');
 window.__gmReady = () => {
-  map = new google.maps.Map($('#map'), { mapId: 'DEMO_MAP_ID', disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false, center: { lat: 37.5435, lng: 127.053 }, zoom: 15 });
+  map = new google.maps.Map($('#map'), { mapId: 'DEMO_MAP_ID', renderingType: 'RASTER', disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false, center: { lat: 37.5435, lng: 127.053 }, zoom: 15 });
   const b = new google.maps.LatLngBounds(); groups.forEach((g) => b.extend({ lat: g.lat, lng: g.lng })); map.fitBounds(b, 30);
   render();
 if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
