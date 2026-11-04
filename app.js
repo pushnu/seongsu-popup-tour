@@ -1,4 +1,5 @@
 import { POPUPS } from './data.js';
+import { GOOGLE_MAPS_KEY } from './config.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -54,14 +55,25 @@ function visible() {
   return v;
 }
 
-// ---- 지도 (Leaflet + OpenStreetMap, 키 불필요. 타일은 캐시하지 않음) ----
-const map = L.map('map', { zoomControl: false }).fitBounds(groups.map((g) => [g.lat, g.lng]), { padding: [30, 30] });
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-}).addTo(map);
-const markerLayer = L.layerGroup().addTo(map);
-let meMarker = null;
+// ---- 지도 (Google Maps JavaScript API, config.js의 키 필요. 키가 없거나 로드 실패면 목록만) ----
+let map = null, markers = [], meMarker = null;
+function mapFailed(msg) {
+  $('#map').innerHTML = `<p class="small" style="padding:16px">${msg}</p>`;
+  if (view === 'map') $('#toggle').click();
+}
+window.gm_authFailure = () => mapFailed('구글 지도 키가 잘못됐거나 사용 제한에 걸렸어요. config.js의 키와 허용 도메인을 확인해 주세요.');
+window.__gmReady = () => {
+  map = new google.maps.Map($('#map'), { mapId: 'DEMO_MAP_ID', disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false, center: { lat: 37.5435, lng: 127.053 }, zoom: 15 });
+  const b = new google.maps.LatLngBounds(); groups.forEach((g) => b.extend({ lat: g.lat, lng: g.lng })); map.fitBounds(b, 30);
+  render();
+if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
+else {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
+  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
+  document.head.append(s);
+}
+};
 
 function pinClass(items) {
   if (items.some((p) => st(p.id).want && !st(p.id).done)) return 'star';
@@ -69,13 +81,17 @@ function pinClass(items) {
   return '';
 }
 function drawMarkers(list) {
-  markerLayer.clearLayers();
+  if (!map) return;
+  markers.forEach((m) => (m.map = null)); markers = [];
   for (const g of groups) {
     const items = g.items.filter((p) => list.includes(p));
     if (!items.length) continue;
-    const icon = L.divIcon({ className: '', iconSize: [30, 30], iconAnchor: [15, 30],
-      html: `<div class="pin ${pinClass(items)}"><span>${items.length > 1 ? items.length : ''}</span></div>` });
-    L.marker([g.lat, g.lng], { icon }).addTo(markerLayer).on('click', () => openGroup(items));
+    const content = document.createElement('div');
+    content.className = 'pin ' + pinClass(items);
+    content.innerHTML = `<span>${items.length > 1 ? items.length : ''}</span>`;
+    const m = new google.maps.marker.AdvancedMarkerElement({ map, position: { lat: g.lat, lng: g.lng }, content });
+    m.addListener('gmp-click', () => openGroup(items));
+    markers.push(m);
   }
 }
 
@@ -128,32 +144,18 @@ function openPopup(p) {
     ${(p.notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join('')}
     ${book}
     <div class="actions">
-      <button class="primary" id="nav">네이버 지도 길찾기</button>
-      <a class="primary" id="gnav" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking" target="_blank" rel="noopener">구글 지도 길찾기</a>
+      <a class="primary wide" id="gnav" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking" target="_blank" rel="noopener">구글 지도 길찾기</a>
       <button id="want" class="${s.want ? 'on' : ''}">${s.want ? '★ 저장됨' : '☆ 가고 싶은 곳'}</button>
       <button id="done" class="${s.done ? 'on' : ''}">${s.done ? '✓ 방문 완료' : '방문 완료'}</button>
     </div>
-    <p class="small">길찾기는 각 지도 앱으로 열고, 앱이 없으면 웹으로 연결돼요. 인터넷이 필요합니다.
-      <a href="https://map.naver.com/p/search/${encodeURIComponent(p.address)}" target="_blank" rel="noopener">네이버 지도에서 주소 검색</a></p>`;
+    <p class="small">길찾기는 구글 지도 앱으로 열고, 앱이 없으면 웹으로 연결돼요. 인터넷이 필요합니다.</p>`;
   const back = $('#back'); if (back) back.onclick = () => openGroup(g.items);
-  $('#nav').onclick = () => naver(p);
   $('#want').onclick = () => { setState(p.id, { want: !s.want }); openPopup(p); render(); };
   $('#done').onclick = () => { setState(p.id, { done: !s.done }); openPopup(p); render(); };
   sheet.classList.add('show');
-  if (view === 'map') map.panTo([p.lat, p.lng]);
+  if (view === 'map' && map) map.panTo({ lat: p.lat, lng: p.lng });
 }
 $('#close').onclick = () => sheet.classList.remove('show');
-
-function naver(p) {
-  const name = encodeURIComponent(p.name);
-  const app = `nmap://route/walk?dlat=${p.lat}&dlng=${p.lng}&dname=${name}&appname=${encodeURIComponent(location.origin)}`;
-  // shortcut: 네이버 웹 길찾기 URL은 비공식 형식(EPSG:3857 좌표). 안 열리면 카드의 주소 검색 링크를 사용. 공식 문서가 생기면 교체
-  const x = (p.lng * 20037508.34) / 180, y = (Math.log(Math.tan(((90 + p.lat) * Math.PI) / 360)) * 20037508.34) / Math.PI;
-  const web = `https://map.naver.com/p/directions/-/${x.toFixed(1)},${y.toFixed(1)},${name},,PLACE_POI/-/walk`;
-  const t = setTimeout(() => { if (!document.hidden) location.href = web; }, 1500);
-  document.addEventListener('visibilitychange', () => clearTimeout(t), { once: true });
-  location.href = app;
-}
 
 // ---- 내 위치: 권한은 버튼을 눌렀을 때 요청. 이미 허용돼 있으면 시작부터 표시하고 계속 따라감 ----
 let watchId = null;
@@ -164,10 +166,19 @@ function locate(follow) {
   watchId = navigator.geolocation.watchPosition((pos) => {
     me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
     $('#fab').textContent = '내 위치';
-    const icon = L.divIcon({ className: '', iconSize: [18, 18], html: '<div class="me"></div>' });
-    if (meMarker) meMarker.setLatLng([me.lat, me.lng]); else meMarker = L.marker([me.lat, me.lng], { icon, zIndexOffset: 1000 }).addTo(map);
-    if (follow) { map.setView([me.lat, me.lng], Math.max(map.getZoom(), 15)); follow = false; }
+    if (map) {
+      if (!meMarker) { const d = document.createElement('div'); d.className = 'me'; meMarker = new google.maps.marker.AdvancedMarkerElement({ map, content: d, zIndex: 1000 }); }
+      meMarker.position = me;
+      if (follow) { map.panTo(me); if (map.getZoom() < 15) map.setZoom(15); follow = false; }
+    }
     render();
+if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
+else {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
+  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
+  document.head.append(s);
+}
   }, (err) => {
     $('#fab').textContent = '내 위치';
     if (follow) alert(err.code === 1 ? '위치 권한이 거부됐어요. 위치 없이도 모든 팝업을 볼 수 있어요.' : '위치를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -182,7 +193,6 @@ $('#toggle').onclick = () => {
   document.body.classList.toggle('show-list', view === 'list');
   $('#list').classList.toggle('show', view === 'list');
   $('#toggle').textContent = view === 'map' ? '목록' : '지도';
-  if (view === 'map') map.invalidateSize();
 };
 $('#q').oninput = (e) => { query = e.target.value.trim().toLowerCase(); render(); };
 $('#chips').onclick = (e) => {
@@ -190,6 +200,13 @@ $('#chips').onclick = (e) => {
   filter = b.dataset.f;
   $('#chips').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
   render();
+if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
+else {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
+  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
+  document.head.append(s);
+}
 };
 
 // ---- 오프라인 표시 + 서비스 워커 ----
@@ -198,3 +215,10 @@ addEventListener('online', offline); addEventListener('offline', offline); offli
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
 render();
+if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
+else {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
+  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
+  document.head.append(s);
+}

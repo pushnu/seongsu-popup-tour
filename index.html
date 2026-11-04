@@ -12,7 +12,6 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="vendor/leaflet.css">
 <style>
 :root{--blue:#1f6feb;--star:#e8a200;--grey:#8a8f98;--bg:#fff;--fg:#111;--line:#e3e5e8;--muted:#5b6068;--safe-b:env(safe-area-inset-bottom)}
 *{box-sizing:border-box}
@@ -54,7 +53,6 @@ main{flex:1;position:relative;min-height:0}
 .actions a.primary{display:flex;align-items:center;justify-content:center;border-radius:12px;min-height:48px;text-decoration:none;color:#fff;background:var(--blue);text-align:center}
 .small{font-size:13px;color:var(--muted)}
 #fab{position:absolute;right:12px;bottom:calc(16px + var(--safe-b));z-index:900;box-shadow:0 2px 8px rgba(0,0,0,.3);min-height:52px;font-weight:600}
-.leaflet-control-attribution{font-size:11px}
 </style>
 </head>
 <body>
@@ -78,7 +76,6 @@ main{flex:1;position:relative;min-height:0}
   <button id="fab" class="primary">내 위치</button>
 </main>
 <div id="sheet"><button id="close" aria-label="닫기">✕</button><div id="sheet-body"></div></div>
-<script src="vendor/leaflet.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
