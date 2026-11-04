@@ -1,5 +1,5 @@
 // 앱 셸만 미리 저장. 지도 타일(openstreetmap.org)과 외부 링크는 저장하지 않음.
-const CACHE = 'popup-tour-v1';
+const CACHE = 'popup-tour-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'data.js', 'manifest.webmanifest', 'vendor/leaflet.js', 'vendor/leaflet.css', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', (e) => {

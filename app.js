@@ -132,7 +132,8 @@ function openPopup(p) {
       <button id="want" class="${s.want ? 'on' : ''}">${s.want ? '★ 저장됨' : '☆ 가고 싶은 곳'}</button>
       <button id="done" class="${s.done ? 'on' : ''}">${s.done ? '✓ 방문 완료' : '방문 완료'}</button>
     </div>
-    <p class="small">길찾기는 네이버 지도 앱으로 열고, 앱이 없으면 웹으로 연결돼요. 인터넷이 필요합니다.</p>`;
+    <p class="small">길찾기는 네이버 지도 앱으로 열고, 앱이 없으면 웹으로 연결돼요. 인터넷이 필요합니다.
+      <a href="https://map.naver.com/p/search/${encodeURIComponent(p.address)}" target="_blank" rel="noopener">네이버 지도에서 주소 검색</a></p>`;
   const back = $('#back'); if (back) back.onclick = () => openGroup(g.items);
   $('#nav').onclick = () => naver(p);
   $('#want').onclick = () => { setState(p.id, { want: !s.want }); openPopup(p); render(); };
@@ -145,7 +146,9 @@ $('#close').onclick = () => sheet.classList.remove('show');
 function naver(p) {
   const name = encodeURIComponent(p.name);
   const app = `nmap://route/walk?dlat=${p.lat}&dlng=${p.lng}&dname=${name}&appname=${encodeURIComponent(location.origin)}`;
-  const web = `https://map.naver.com/p/directions/-/${p.lng},${p.lat},${name}/-/walk`;
+  // shortcut: 네이버 웹 길찾기 URL은 비공식 형식(EPSG:3857 좌표). 안 열리면 카드의 주소 검색 링크를 사용. 공식 문서가 생기면 교체
+  const x = (p.lng * 20037508.34) / 180, y = (Math.log(Math.tan(((90 + p.lat) * Math.PI) / 360)) * 20037508.34) / Math.PI;
+  const web = `https://map.naver.com/p/directions/-/${x.toFixed(1)},${y.toFixed(1)},${name},,PLACE_POI/-/walk`;
   const t = setTimeout(() => { if (!document.hidden) location.href = web; }, 1500);
   document.addEventListener('visibilitychange', () => clearTimeout(t), { once: true });
   location.href = app;
