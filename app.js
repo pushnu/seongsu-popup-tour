@@ -128,11 +128,12 @@ function openPopup(p) {
     ${(p.notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join('')}
     ${book}
     <div class="actions">
-      <button class="primary wide" id="nav">네이버 지도 길찾기</button>
+      <button class="primary" id="nav">네이버 지도 길찾기</button>
+      <a class="primary" id="gnav" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking" target="_blank" rel="noopener">구글 지도 길찾기</a>
       <button id="want" class="${s.want ? 'on' : ''}">${s.want ? '★ 저장됨' : '☆ 가고 싶은 곳'}</button>
       <button id="done" class="${s.done ? 'on' : ''}">${s.done ? '✓ 방문 완료' : '방문 완료'}</button>
     </div>
-    <p class="small">길찾기는 네이버 지도 앱으로 열고, 앱이 없으면 웹으로 연결돼요. 인터넷이 필요합니다.
+    <p class="small">길찾기는 각 지도 앱으로 열고, 앱이 없으면 웹으로 연결돼요. 인터넷이 필요합니다.
       <a href="https://map.naver.com/p/search/${encodeURIComponent(p.address)}" target="_blank" rel="noopener">네이버 지도에서 주소 검색</a></p>`;
   const back = $('#back'); if (back) back.onclick = () => openGroup(g.items);
   $('#nav').onclick = () => naver(p);
@@ -154,22 +155,26 @@ function naver(p) {
   location.href = app;
 }
 
-// ---- 내 위치: 버튼을 눌렀을 때만 권한 요청 ----
-$('#fab').onclick = () => {
+// ---- 내 위치: 권한은 버튼을 눌렀을 때 요청. 이미 허용돼 있으면 시작부터 표시하고 계속 따라감 ----
+let watchId = null;
+function locate(follow) {
   if (!navigator.geolocation) return alert('이 기기에서는 위치를 쓸 수 없어요.');
-  $('#fab').textContent = '찾는 중…';
-  navigator.geolocation.getCurrentPosition((pos) => {
+  if (follow) $('#fab').textContent = '찾는 중…';
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition((pos) => {
     me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
     $('#fab').textContent = '내 위치';
     const icon = L.divIcon({ className: '', iconSize: [18, 18], html: '<div class="me"></div>' });
     if (meMarker) meMarker.setLatLng([me.lat, me.lng]); else meMarker = L.marker([me.lat, me.lng], { icon, zIndexOffset: 1000 }).addTo(map);
-    map.setView([me.lat, me.lng], Math.max(map.getZoom(), 15));
+    if (follow) { map.setView([me.lat, me.lng], Math.max(map.getZoom(), 15)); follow = false; }
     render();
   }, (err) => {
     $('#fab').textContent = '내 위치';
-    alert(err.code === 1 ? '위치 권한이 거부됐어요. 위치 없이도 모든 팝업을 볼 수 있어요.' : '위치를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.');
-  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
-};
+    if (follow) alert(err.code === 1 ? '위치 권한이 거부됐어요. 위치 없이도 모든 팝업을 볼 수 있어요.' : '위치를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.');
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+}
+$('#fab').onclick = () => locate(true);
+navigator.permissions?.query({ name: 'geolocation' }).then((r) => { if (r.state === 'granted') locate(false); }).catch(() => {});
 
 // ---- 전환·검색·필터 ----
 $('#toggle').onclick = () => {
