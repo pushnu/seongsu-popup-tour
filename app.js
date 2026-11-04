@@ -66,13 +66,6 @@ window.__gmReady = () => {
   map = new google.maps.Map($('#map'), { mapId: 'DEMO_MAP_ID', renderingType: 'RASTER', disableDefaultUI: true, gestureHandling: 'greedy', clickableIcons: false, center: { lat: 37.5435, lng: 127.053 }, zoom: 15 });
   const b = new google.maps.LatLngBounds(); groups.forEach((g) => b.extend({ lat: g.lat, lng: g.lng })); map.fitBounds(b, 30);
   render();
-if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
-else {
-  const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
-  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
-  document.head.append(s);
-}
 };
 
 function pinClass(items) {
@@ -90,7 +83,7 @@ function drawMarkers(list) {
     content.className = 'pin ' + pinClass(items);
     content.innerHTML = `<span>${items.length > 1 ? items.length : ''}</span>`;
     const m = new google.maps.marker.AdvancedMarkerElement({ map, position: { lat: g.lat, lng: g.lng }, content });
-    m.addListener('gmp-click', () => openGroup(items));
+    m.addEventListener('gmp-click', () => openGroup(items));
     markers.push(m);
   }
 }
@@ -172,13 +165,6 @@ function locate(follow) {
       if (follow) { map.panTo(me); if (map.getZoom() < 15) map.setZoom(15); follow = false; }
     }
     render();
-if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
-else {
-  const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
-  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
-  document.head.append(s);
-}
   }, (err) => {
     $('#fab').textContent = '내 위치';
     if (follow) alert(err.code === 1 ? '위치 권한이 거부됐어요. 위치 없이도 모든 팝업을 볼 수 있어요.' : '위치를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -200,13 +186,6 @@ $('#chips').onclick = (e) => {
   filter = b.dataset.f;
   $('#chips').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
   render();
-if (!GOOGLE_MAPS_KEY) mapFailed('구글 지도 키가 없어 목록만 보여요. config.js에 키를 넣어 주세요.');
-else {
-  const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&v=weekly&libraries=marker&language=ko&region=KR&loading=async&callback=__gmReady`;
-  s.onerror = () => mapFailed('지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.');
-  document.head.append(s);
-}
 };
 
 // ---- 오프라인 표시 + 서비스 워커 ----
