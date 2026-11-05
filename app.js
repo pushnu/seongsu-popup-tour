@@ -84,7 +84,15 @@ function visible() {
 let map = null, markers = [], meMarker = null;
 let routeLines = [], routeKey = '', routeInfo = null; // routeInfo: {m, s} 도보 거리(m)·시간(초), {err} 실패
 const near3 = (v) => v.toFixed(3); // 내 위치는 약 100m 단위로만 반영해 경로 재요청을 줄임
-// 구글 Routes 라이브러리(Route.computeRoutes, 도보). 레거시 DirectionsService는 새 Cloud 프로젝트에서 못 켜서 사용 안 함.
+// 도보 경로: FOSSGIS의 공개 Valhalla 서버(OpenStreetMap 데이터). 구글 Routes는 한국 도보 경로를 주지 않음(확인: 2026-11-05).
+// shortcut: 공개 데모 서버라 가용성 보장 없음, 자주 실패하면 자체 키가 있는 서비스로 교체
+const VALHALLA = 'https://valhalla1.openstreetmap.de/route?json=';
+function decodePoly6(str) { // Valhalla 응답 shape(polyline, 1e6 정밀도) 디코딩
+  const out = []; let i = 0, lat = 0, lng = 0;
+  const next = () => { let b, shift = 0, res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << shift; shift += 5; } while (b >= 32); return res & 1 ? ~(res >> 1) : res >> 1; };
+  while (i < str.length) { lat += next(); lng += next(); out.push({ lat: lat / 1e6, lng: lng / 1e6 }); }
+  return out;
+}
 async function drawRoute(list) {
   const stops = (me ? [me] : []).concat(list);
   const key = filter === 'want' && stops.length > 1 ? stops.map((p) => p.id || near3(p.lat) + ',' + near3(p.lng)).join('|') : '';
@@ -94,23 +102,22 @@ async function drawRoute(list) {
   if (!key) return;
   const pts = stops.map((p) => ({ lat: p.lat, lng: p.lng }));
   try {
-    const { Route } = await google.maps.importLibrary('routes');
-    const { routes } = await Route.computeRoutes({ origin: pts[0], destination: pts[pts.length - 1], intermediates: pts.slice(1, -1).map((location) => ({ location })), travelMode: 'WALKING', fields: ['path', 'distanceMeters', 'durationMillis'] });
+    const res = await fetch(VALHALLA + encodeURIComponent(JSON.stringify({ locations: pts.map((p) => ({ lat: p.lat, lon: p.lng })), costing: 'pedestrian', units: 'kilometers' })));
+    const j = await res.json();
     if (key !== routeKey) return;
-    if (!routes?.length) throw new Error('경로 없음');
-    routeLines = routes[0].createPolylines({ polylineOptions: { strokeColor: '#e8a200', strokeWeight: 5 } });
-    routeLines.forEach((l) => l.setMap(map));
-    routeInfo = { m: routes[0].distanceMeters, s: routes[0].durationMillis / 1000 };
-  } catch (e) { // Routes API가 안 켜져 있거나 경로가 없으면 직선으로
+    if (!j.trip) throw new Error(j.error || 'HTTP ' + res.status);
+    routeLines = [new google.maps.Polyline({ map, path: j.trip.legs.flatMap((l) => decodePoly6(l.shape)), strokeColor: '#e8a200', strokeWeight: 5 })];
+    routeInfo = { m: j.trip.summary.length * 1000, s: j.trip.summary.time };
+  } catch (e) { // 서버 장애·오프라인이면 직선으로
     if (key !== routeKey) return;
-    routeInfo = { err: String(e.message || e).slice(0, 120) };
+    routeInfo = { err: String(e.message || e).slice(0, 80) };
     routeLines = [new google.maps.Polyline({ map, path: pts, strokeColor: '#e8a200', strokeWeight: 4, strokeOpacity: 0.6 })];
   }
   drawList(list);
 }
 const routeText = () => !routeInfo ? '도보 경로 계산 중…' : routeInfo.err
-  ? `도보 경로를 못 가져와 직선으로 표시해요. Google Cloud에서 'Routes API'를 켜 주세요. (${routeInfo.err})`
-  : `구글 도보 경로 기준 약 ${(routeInfo.m / 1000).toFixed(1)} km · ${Math.round(routeInfo.s / 60)}분${me ? ' (내 위치 출발)' : ' (첫 번째 장소 출발)'}`;
+  ? `도보 경로 서버에 연결하지 못해 직선으로 표시해요 (${routeInfo.err}).`
+  : `도보 경로 약 ${(routeInfo.m / 1000).toFixed(1)} km · ${Math.round(routeInfo.s / 60)}분${me ? ' (내 위치 출발)' : ' (첫 번째 장소 출발)'} · 경로 데이터 © OpenStreetMap 기여자, FOSSGIS Valhalla`;
 function mapFailed(msg) {
   $('#map').innerHTML = `<p class="small" style="padding:16px">${msg}</p>`;
   if (view === 'map') $('#toggle').click();
