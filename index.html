@@ -50,12 +50,16 @@ main{flex:1;position:relative;min-height:0}
 #close{position:absolute;right:10px;top:10px;min-height:40px;width:40px;padding:0;border-radius:50%;font-size:20px}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .actions .wide{grid-column:1/-1}
-.actions a.primary{display:flex;align-items:center;justify-content:center;border-radius:12px;min-height:48px;text-decoration:none;color:#fff;background:var(--blue);text-align:center}
 .small{font-size:13px;color:var(--muted)}
+.rowi{display:flex;gap:4px;align-items:center;border-bottom:1px solid var(--line)}.rowi .item{flex:1;border:0}.rowi .mv{width:44px;padding:0;min-height:44px;border-radius:8px}
+.route{display:grid;gap:8px;padding:8px 0 12px;border-bottom:1px solid var(--line)}
+.actions a.primary,.actions a.sec,.route a.primary{display:flex;align-items:center;justify-content:center;border-radius:12px;min-height:48px;text-decoration:none;text-align:center}
+.actions a.primary,.route a.primary{color:#fff;background:var(--blue)}.actions a.sec{color:var(--fg);background:#f0f2f5}
 #fab{position:absolute;right:12px;bottom:calc(16px + var(--safe-b));z-index:900;box-shadow:0 2px 8px rgba(0,0,0,.3);min-height:52px;font-weight:600}
 </style>
 </head>
 <body>
+<div id="install" style="display:none;background:#eef3ff;padding:8px 12px;text-align:center"><button class="primary" id="install-btn">홈 화면에 앱 설치</button><span class="small" id="ios" style="display:none">Safari 공유 버튼 → '홈 화면에 추가'를 누르면 앱처럼 쓸 수 있어요.</span></div>
 <div id="offline">오프라인: 목록·상세·저장 상태만 볼 수 있어요. 지도 타일과 길찾기는 인터넷이 필요합니다.</div>
 <header>
   <div class="row">
@@ -65,9 +69,6 @@ main{flex:1;position:relative;min-height:0}
   <div id="chips">
     <button data-f="all" class="on">전체</button>
     <button data-f="want">가고 싶은 곳</button>
-    <button data-f="todo">미방문</button>
-    <button data-f="done">방문 완료</button>
-    <button data-f="book">예약 확인 필요</button>
   </div>
 </header>
 <main>

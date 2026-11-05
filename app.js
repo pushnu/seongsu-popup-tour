@@ -4,7 +4,7 @@ import { GOOGLE_MAPS_KEY } from './config.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BOOK_LABEL = { required: '예약 필수', info: '예약 안내 있음', check: '확인 필요' };
-const KEY = 'popup-state-v1';
+const KEY = 'popup-state-v1', ORDER_KEY = 'popup-order-v1';
 
 // 저장 상태: {id: {want, done}} — localStorage, 로그인 없음
 let state = {};
@@ -13,6 +13,30 @@ const st = (id) => state[id] || {};
 function setState(id, patch) {
   state[id] = { ...st(id), ...patch };
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { alert('저장 공간을 쓸 수 없어 상태가 유지되지 않을 수 있어요.'); }
+}
+
+// 가고 싶은 곳 방문 순서: id 배열. 순서가 없는 항목은 뒤에 붙음
+let order = [];
+try { order = JSON.parse(localStorage.getItem(ORDER_KEY)) || []; } catch { order = []; }
+function wantList() {
+  const w = POPUPS.filter((p) => st(p.id).want);
+  const o = order.map((id) => w.find((p) => p.id === id)).filter(Boolean);
+  return o.concat(w.filter((p) => !o.includes(p)));
+}
+function saveOrder(list) { order = list.map((p) => p.id); try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch {} }
+function moveWant(id, dir) {
+  const l = wantList(), i = l.findIndex((p) => p.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= l.length) return;
+  [l[i], l[j]] = [l[j], l[i]]; saveOrder(l); render();
+}
+function nearestOrder() { // 직선거리 기준으로 가까운 곳부터 차례로 고름(근사, 최적해 보장 안 함)
+  let rest = wantList(), cur = me || rest[0]; const out = [];
+  while (rest.length) { rest.sort((a, b) => between(cur, a) - between(cur, b)); cur = rest.shift(); out.push(cur); }
+  saveOrder(out); render();
+}
+function routeUrl(list) { // 구글 지도 URL은 경유지 최대 9곳 → 앞에서 10곳까지만. origin 없으면 구글이 현재 위치를 씀
+  const pts = list.slice(0, 10).map((p) => p.lat + ',' + p.lng), dest = pts.pop();
+  return `https://www.google.com/maps/dir/?api=1${me ? `&origin=${me.lat},${me.lng}` : ''}&destination=${dest}${pts.length ? '&waypoints=' + pts.join('|') : ''}&travelmode=walking`;
 }
 
 // 같은 좌표는 하나의 그룹
@@ -26,13 +50,13 @@ for (const p of POPUPS) {
 
 let filter = 'all', query = '', me = null, view = 'map';
 
-function dist(p) { // 직선거리(m). 도보거리·시간은 계산하지 않음
-  if (!me) return null;
+function between(a, b) { // 직선거리(m). 도보거리·시간은 계산하지 않음
   const R = 6371000, toR = Math.PI / 180;
-  const dLat = (p.lat - me.lat) * toR, dLng = (p.lng - me.lng) * toR;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(me.lat * toR) * Math.cos(p.lat * toR) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+  const dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
 }
+const dist = (p) => (me ? between(me, p) : null);
 const distText = (p) => { const d = dist(p); return d == null ? '' : '직선거리 약 ' + (d < 1000 ? Math.round(d / 10) * 10 + ' m' : (d / 1000).toFixed(1) + ' km'); };
 
 function openText(p) { // 등록 시간표(토요일) 기준만 판단. 실시간 영업 정보가 아님
@@ -47,16 +71,17 @@ const lastDay = (p) => p.period.endsWith('2026-11-07');
 const matches = (p) => {
   if (query && !p.name.toLowerCase().includes(query)) return false;
   const s = st(p.id);
-  return filter === 'all' || (filter === 'want' && s.want) || (filter === 'todo' && !s.done) || (filter === 'done' && s.done) || (filter === 'book' && p.booking);
+  return filter === 'all' || (filter === 'want' && s.want);
 };
 function visible() {
+  if (filter === 'want') return wantList().filter(matches); // 저장한 순서 유지
   const v = POPUPS.filter(matches);
   if (me) v.sort((a, b) => dist(a) - dist(b));
   return v;
 }
 
 // ---- 지도 (Google Maps JavaScript API, config.js의 키 필요. 키가 없거나 로드 실패면 목록만) ----
-let map = null, markers = [], meMarker = null;
+let map = null, markers = [], meMarker = null, line = null;
 function mapFailed(msg) {
   $('#map').innerHTML = `<p class="small" style="padding:16px">${msg}</p>`;
   if (view === 'map') $('#toggle').click();
@@ -76,13 +101,15 @@ function pinClass(items) {
 function drawMarkers(list) {
   if (!map) return;
   markers.forEach((m) => (m.map = null)); markers = [];
+  if (line) line.setMap(null);
+  if (filter === 'want' && list.length > 1) line = new google.maps.Polyline({ map, path: (me ? [me] : []).concat(list), strokeColor: '#e8a200', strokeWeight: 4 });
   for (const g of groups) {
     const items = g.items.filter((p) => list.includes(p));
     if (!items.length) continue;
     const content = document.createElement('div');
     content.className = 'pin ' + pinClass(items);
-    content.innerHTML = `<span>${items.length > 1 ? items.length : ''}</span>`;
-    const m = new google.maps.marker.AdvancedMarkerElement({ map, position: { lat: g.lat, lng: g.lng }, content });
+    content.innerHTML = `<span>${filter === 'want' ? list.indexOf(items[0]) + 1 : items.length > 1 ? items.length : ''}</span>`;
+    const m = new google.maps.marker.AdvancedMarkerElement({ map, position: { lat: g.lat, lng: g.lng }, content, gmpClickable: true });
     m.addEventListener('gmp-click', () => openGroup(items));
     markers.push(m);
   }
@@ -99,15 +126,26 @@ function tags(p) {
   return t.join('');
 }
 function drawList(list) {
-  $('#list').innerHTML = list.length ? list.map((p) => `
+  const want = filter === 'want';
+  const item = (p, i) => `
     <button class="item" data-id="${p.id}">
-      <b>${esc(p.name)}</b>
+      <b>${want ? i + 1 + '. ' : ''}${esc(p.name)}</b>
       <span class="m">${esc(p.summary)}</span>
       <span class="m">${esc(p.satHours)} ${me ? '· ' + distText(p) : ''}</span>
       <span>${tags(p)}</span>
-    </button>`).join('') : '<p class="small">조건에 맞는 팝업이 없어요.</p>';
+    </button>`;
+  const rows = list.map((p, i) => want ? `<div class="rowi">${item(p, i)}<button class="mv" data-mv="-1" data-id="${p.id}" aria-label="위로">↑</button><button class="mv" data-mv="1" data-id="${p.id}" aria-label="아래로">↓</button></div>` : item(p, i)).join('');
+  const head = !want ? '' : list.length ? `
+    <div class="route">
+      <button id="near">가까운 순으로 정렬</button>
+      <a class="primary" href="${routeUrl(list)}" target="_blank" rel="noopener">구글 지도로 전체 경로 열기</a>
+      <p class="small">순서는 ↑↓로 바꿀 수 있고, 정렬은 직선거리 기준이라 도보 시간은 계산하지 않아요.${list.length > 10 ? ' 구글 지도는 앞의 10곳까지만 열려요.' : ''}</p>
+    </div>` : '<p class="small">상세 카드의 ☆ 버튼으로 저장하면 여기서 방문 순서와 경로를 정할 수 있어요.</p>';
+  $('#list').innerHTML = head + (rows || (want ? '' : '<p class="small">조건에 맞는 팝업이 없어요.</p>'));
+  const near = $('#near'); if (near) near.onclick = nearestOrder;
 }
 $('#list').addEventListener('click', (e) => {
+  const mv = e.target.closest('.mv'); if (mv) return moveWant(mv.dataset.id, +mv.dataset.mv);
   const b = e.target.closest('.item'); if (b) openPopup(POPUPS.find((p) => p.id === b.dataset.id));
 });
 
@@ -138,6 +176,7 @@ function openPopup(p) {
     ${book}
     <div class="actions">
       <a class="primary wide" id="gnav" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking" target="_blank" rel="noopener">구글 지도 길찾기</a>
+      <a class="sec wide" href="https://popply.co.kr/popup/${p.id}" target="_blank" rel="noopener">팝플리 상세 페이지 보기</a>
       <button id="want" class="${s.want ? 'on' : ''}">${s.want ? '★ 저장됨' : '☆ 가고 싶은 곳'}</button>
       <button id="done" class="${s.done ? 'on' : ''}">${s.done ? '✓ 방문 완료' : '방문 완료'}</button>
     </div>
@@ -187,6 +226,12 @@ $('#chips').onclick = (e) => {
   $('#chips').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
   render();
 };
+
+// ---- 설치 안내: 안드로이드는 설치 버튼, 아이폰은 Safari 안내 ----
+let installEvt = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('#install').style.display = 'block'; });
+$('#install-btn').onclick = () => { installEvt?.prompt(); installEvt = null; $('#install').style.display = 'none'; };
+if (/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone) { $('#install').style.display = 'block'; $('#install-btn').style.display = 'none'; $('#ios').style.display = 'inline'; }
 
 // ---- 오프라인 표시 + 서비스 워커 ----
 const offline = () => { $('#offline').style.display = navigator.onLine ? 'none' : 'block'; };
