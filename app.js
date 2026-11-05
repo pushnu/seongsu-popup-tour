@@ -82,6 +82,35 @@ function visible() {
 
 // ---- 지도 (Google Maps JavaScript API, config.js의 키 필요. 키가 없거나 로드 실패면 목록만) ----
 let map = null, markers = [], meMarker = null, line = null;
+let dirRenderer = null, routeKey = '', routeInfo = null; // routeInfo: {m, s} 도보 거리·시간, {err} 실패
+const near3 = (v) => v.toFixed(3); // 내 위치는 약 100m 단위로만 반영해 경로 재요청을 줄임
+function drawRoute(list) {
+  const stops = (me ? [me] : []).concat(list);
+  const key = filter === 'want' && stops.length > 1 ? stops.map((p) => p.id || near3(p.lat) + ',' + near3(p.lng)).join('|') : '';
+  if (key === routeKey) return;
+  routeKey = key; routeInfo = null;
+  if (line) line.setMap(null); if (dirRenderer) dirRenderer.setMap(null);
+  if (!key) return;
+  const pts = stops.map((p) => ({ lat: p.lat, lng: p.lng }));
+  new google.maps.DirectionsService().route({ origin: pts[0], destination: pts[pts.length - 1], waypoints: pts.slice(1, -1).map((location) => ({ location, stopover: true })), travelMode: 'WALKING' })
+    .then((res) => {
+      if (key !== routeKey) return;
+      dirRenderer ||= new google.maps.DirectionsRenderer({ suppressMarkers: true, preserveViewport: true, polylineOptions: { strokeColor: '#e8a200', strokeWeight: 5 } });
+      dirRenderer.setMap(map); dirRenderer.setDirections(res);
+      const legs = res.routes[0].legs;
+      routeInfo = { m: legs.reduce((a, l) => a + l.distance.value, 0), s: legs.reduce((a, l) => a + l.duration.value, 0) };
+      drawList(list);
+    })
+    .catch((e) => { // 키에 Directions API가 안 켜져 있거나(REQUEST_DENIED) 경로가 없으면 직선으로
+      if (key !== routeKey) return;
+      routeInfo = { err: e.code || String(e) };
+      line = new google.maps.Polyline({ map, path: pts, strokeColor: '#e8a200', strokeWeight: 4, strokeOpacity: 0.6 });
+      drawList(list);
+    });
+}
+const routeText = () => !routeInfo ? '도보 경로 계산 중…' : routeInfo.err
+  ? `도보 경로를 못 가져와 직선으로 표시해요 (${routeInfo.err === 'REQUEST_DENIED' ? 'Google Cloud에서 Directions API를 켜 주세요' : routeInfo.err}).`
+  : `구글 도보 경로 기준 약 ${(routeInfo.m / 1000).toFixed(1)} km · ${Math.round(routeInfo.s / 60)}분${me ? ' (내 위치 출발)' : ' (첫 번째 장소 출발)'}`;
 function mapFailed(msg) {
   $('#map').innerHTML = `<p class="small" style="padding:16px">${msg}</p>`;
   if (view === 'map') $('#toggle').click();
@@ -101,8 +130,7 @@ function pinClass(items) {
 function drawMarkers(list) {
   if (!map) return;
   markers.forEach((m) => (m.map = null)); markers = [];
-  if (line) line.setMap(null);
-  if (filter === 'want' && list.length > 1) line = new google.maps.Polyline({ map, path: (me ? [me] : []).concat(list), strokeColor: '#e8a200', strokeWeight: 4 });
+  drawRoute(list);
   for (const g of groups) {
     const items = g.items.filter((p) => list.includes(p));
     if (!items.length) continue;
@@ -139,7 +167,7 @@ function drawList(list) {
     <div class="route">
       <button id="near">가까운 순으로 정렬</button>
       <a class="primary" href="${routeUrl(list)}" target="_blank" rel="noopener">구글 지도로 전체 경로 열기</a>
-      <p class="small">순서는 ↑↓로 바꿀 수 있고, 정렬은 직선거리 기준이라 도보 시간은 계산하지 않아요.${list.length > 10 ? ' 구글 지도는 앞의 10곳까지만 열려요.' : ''}</p>
+      <p class="small">${map ? esc(routeText()) + '<br>' : ''}순서는 ↑↓로 바꿀 수 있고, '가까운 순' 정렬은 직선거리 기준이에요.${list.length > 10 ? ' 구글 지도는 앞의 10곳까지만 열려요.' : ''}</p>
     </div>` : '<p class="small">상세 카드의 ☆ 버튼으로 저장하면 여기서 방문 순서와 경로를 정할 수 있어요.</p>';
   $('#list').innerHTML = head + (rows || (want ? '' : '<p class="small">조건에 맞는 팝업이 없어요.</p>'));
   const near = $('#near'); if (near) near.onclick = nearestOrder;
@@ -170,13 +198,13 @@ function openPopup(p) {
     <h2>${esc(p.name)}</h2>
     <p class="small">${esc(p.address)}${me ? ' · ' + distText(p) : ''}</p>
     <p>${esc(p.summary)}</p>
-    <p><b>기간</b> ${esc(p.period)}${lastDay(p) ? ' <span class="tag last">11/7 마지막 날</span>' : ''}</p>
+    <p><b>기간</b> ${p.link ? '상시 운영(네이버 지도 등록 장소)' : esc(p.period)}${lastDay(p) ? ' <span class="tag last">11/7 마지막 날</span>' : ''}</p>
     <p><b>운영시간</b> ${esc(p.week)}<br><span class="small">${esc(openText(p))} (등록 시간표 기준, 실시간 정보 아님)</span></p>
     ${(p.notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join('')}
     ${book}
     <div class="actions">
       <a class="primary wide" id="gnav" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking" target="_blank" rel="noopener">구글 지도 길찾기</a>
-      <a class="sec wide" href="https://popply.co.kr/popup/${p.id}" target="_blank" rel="noopener">팝플리 상세 페이지 보기</a>
+      <a class="sec wide" href="${p.link || `https://popply.co.kr/popup/${p.id}`}" target="_blank" rel="noopener">${p.link ? '네이버 지도에서 보기' : '팝플리 상세 페이지 보기'}</a>
       <button id="want" class="${s.want ? 'on' : ''}">${s.want ? '★ 저장됨' : '☆ 가고 싶은 곳'}</button>
       <button id="done" class="${s.done ? 'on' : ''}">${s.done ? '✓ 방문 완료' : '방문 완료'}</button>
     </div>
@@ -224,6 +252,7 @@ $('#chips').onclick = (e) => {
   const b = e.target.closest('button'); if (!b) return;
   filter = b.dataset.f;
   $('#chips').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  if (filter === 'want' && view === 'map') $('#toggle').click(); // 순서 편집은 목록에 있음
   render();
 };
 

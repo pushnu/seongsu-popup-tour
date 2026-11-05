@@ -443,5 +443,29 @@ export const POPUPS = [
    "text": "네이버 사전예약 연결 있음. 예약 필수 여부는 미확인.",
    "url": "https://m.booking.naver.com/booking/6/bizes/1643675/items/7627870"
   }
+ },
+ {
+  "id": "n31408144",
+  "name": "훼미리손칼국수보쌈",
+  "address": "서울 성동구 왕십리로 134",
+  "lat": 37.5495816,
+  "lng": 127.0446932,
+  "period": "상시 ~ 상시",
+  "satHours": "11:30–21:30",
+  "week": "월~일 : 11:30 - 21:30",
+  "summary": "칼국수·보쌈 맛집 (뚝섬역 1번 출구 250m)",
+  "link": "https://naver.me/GaldtNDR"
+ },
+ {
+  "id": "n2049873898",
+  "name": "미유 MEOW",
+  "address": "서울 성동구 뚝섬로1가길 19-11 1층",
+  "lat": 37.5425602,
+  "lng": 127.0474789,
+  "period": "상시 ~ 상시",
+  "satHours": "10:00–22:00",
+  "week": "화~일 : 10:00 - 22:00 (21:30 라스트오더), 월 정기휴무",
+  "summary": "카페·디저트",
+  "link": "https://naver.me/xPY11hhw"
  }
 ];
